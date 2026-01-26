@@ -1,0 +1,22 @@
+# 仮想環境
+venv/
+env/
+
+# Pythonキャッシュ
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# Jupyter Notebook
+.ipynb_checkpoints/
+
+# 環境変数
+.env
+
+# Streamlitキャッシュ
+.streamlit/
+
+# その他
+.DS_Store
+*.log
