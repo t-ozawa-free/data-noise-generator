@@ -1,4 +1,3 @@
-from tkinter import N
 import streamlit as st  # Streamlitをインポート
 import pandas as pd  # pandasをインポート
 import numpy as np  # numpyをインポート
@@ -317,7 +316,7 @@ if uploaded_file is not None:  # ファイルがアップロードされた場�
             st.dataframe(df_noisy.head(20)) # ノイズ挿入後のデータを10行表示
 
             # 欠損値がある行を表示
-            st.subheader("欠損値を含む行（サンプル）") # 欠損値を含む行を表示
+            st.subheader("欠損値を含む行（最初の10行）") # 欠損値を含む行を表示
             missing_rows = df_noisy[df_noisy.isnull().any(axis=1)]  # 欠損値を含む行を取得
             if len(missing_rows) > 0:  # 欠損値を含む行がある場合
                 st.dataframe(missing_rows.head(10))  # 欠损值を含む行の10行（最大）を表示
