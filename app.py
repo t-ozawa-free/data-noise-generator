@@ -28,7 +28,24 @@ uploaded_file = st.file_uploader(
 if uploaded_file is not None:  # ファイルがアップロードされた場合
     # ファイルからデータの読み込み
     try:
+        # ファイルサイズチェック：エラーハンドリング：5.2 処理エラー「メモリ不足」
+        if uploaded_file.size > 200 * 1024 * 1024:  # 200MB
+            st.error("❌ ファイルサイズが大きすぎます。200MB以下のファイルをアップロードしてください。")
+            st.stop()
+        
+        # CSV読み込み
         df = pd.read_csv(uploaded_file)
+
+        # 空ファイルチェック：エラーハンドリング：5.1入力検証「空ファイル」
+        if len(df) == 0:
+            st.error("❌ ファイルが空です。データが含まれるCSVをアップロードしてください。")
+            st.stop()
+        
+        # 列が存在するかチェック：エラーハンドリング：5.1入力検証「列が存在しない」
+        if len(df.columns) == 0:
+            st.error("❌ CSVファイルに列が存在しません。正しい形式のCSVをアップロードしてください。")
+            st.stop()
+
         st.success(f"✅ ファイルを読み込みました: {uploaded_file.name}")
 
         # Step2:データのプレビュー
@@ -96,7 +113,7 @@ if uploaded_file is not None:  # ファイルがアップロードされた場�
 
                     # 合計チェック
                     total_rate = missing_rate + anomaly_rate  # 合計率を計算
-                    if total_rate > 100:  # 合計率が100%を超えている場合
+                    if total_rate > 100:  # 合計率が100%を超えている場合：エラーハンドリング：5.1入力検証「欠損率+異常値率>100%」
                         st.error(f"⚠️ 欠損率({missing_rate}%) + 異常値率({anomaly_rate}%) = {total_rate}% が100%を超えています")  # エラーメッセージを表示
                     else:  # 合計率が100%以下の場合
                         st.info(f"💡 合計挿入率: {total_rate}%")
@@ -110,8 +127,26 @@ if uploaded_file is not None:  # ファイルがアップロードされた場�
 
                     anomaly_patterns = []  # 異常値パターンを保存するリスト
 
+                    is_date_column = False # 日付型の列かどうか
+                    if df[col].dtype == "object": #
+                        # 日付形式化チェック
+                        try:
+                            pd.to_datetime(df[col].dropna().iloc[0])
+                            is_date_column = True
+                        except:
+                            pass
+
+                    # 日付型の場合
+                    if is_date_column:
+                        if st.checkbox("不正な日付形式", key=f"anomaly_invalid_date_{col}"):
+                            anomaly_patterns.append("invalid_date")
+                        if st.checkbox("未来の日付", key=f"anomaly_future_{col}"):
+                            anomaly_patterns.append("future_date")
+                        if st.checkbox("過去すぎる日付", key=f"anomaly_past_{col}"):
+                            anomaly_patterns.append("past_date")
+                    
                     # 数値型の場合
-                    if df[col].dtype in ["int64", "float64"]:  # 数値型の場合
+                    elif df[col].dtype in ["int64", "float64"]:  # 数値型の場合
                         if st.checkbox("マイナスの数値", key=f"anomaly_negative_{col}"):  # マイナスの数値を選択した場合
                             anomaly_patterns.append("negative")  # マイナスの数値をパターンに追加
                         if st.checkbox("平均の10倍", key=f"anomaly_large_{col}"):  # 平均の10倍を選択した場合
@@ -150,6 +185,37 @@ if uploaded_file is not None:  # ファイルがアップロードされた場�
         st.header("Step 4: プレビュー")
 
         if st.button("🔄 プレビュー生成", type="primary"):  # プレビュー生成ボタン
+            # 異常値パターンが選択されているかチェック
+            has_valid_config = False  # 異常値パターンが選択されているかのフラグ
+            error_messages = []  # エラーメッセージを保存するリスト
+
+            for col in df.columns:  # 列ごとにチェック
+                if col in st.session_state.noise_config:  # セッションステートに設定がある場合
+                    config = st.session_state.noise_config[col]  # セッションステートから、該当する列の設定を取得
+
+                    # 欠損値または異常値が設定されているか
+                    if config.get("missing_rate", 0) > 0:  # 欠損値が設定されている場合
+                        has_valid_config = True  # 異常値パターンが選択されていることを示すフラグを立てる
+
+                    if config.get("anomaly_enabled", False):  # 異常値を挿入するチェックボックスがオンの場合
+                        if config.get("anomaly_rate", 0) > 0:  # 異常値率が0%以上の場合
+                            patterns = config.get("anomaly_patterns", [])  # 異常値パターンを取得
+                            # エラーハンドリング：5.1入力検証「異常値パターン未選択」
+                            if len(patterns) == 0:  # 異常値パターンが選択されていない場合
+                                error_messages.append(f"⚠️ {col}列: 異常値を挿入する場合は、パターンを1つ以上選択してください")  # エラーメッセージを追加
+                            else:  # 異常値パターンが選択されている場合
+                                has_valid_config = True  # 異常値パターンが選択されていることを示すフラグを立てる
+            # エラーメッセージ表示
+            if error_messages:  # エラーメッセージがある場合
+                for msg in error_messages:  # エラーメッセージごとに表示
+                    st.error(msg)  # エラーメッセージを表示
+            
+            # 何も設定されていない場合
+            if not has_valid_config:  # 異常値パターンが選択されていない場合
+                st.warning("⚠️ 欠損値または異常値が設定されていません。設定を確認してください。")  # エラーメッセージを表示
+                st.stop()  # アプリケーションを停止
+
+
             # データをコピー
             df_noisy = df.copy()
 
@@ -217,11 +283,18 @@ if uploaded_file is not None:  # ファイルがアップロードされた場�
 
                                     # 文字列型の異常値
                                     elif pattern == "number":
-                                        df_noisy.loc[pattern_indices, col] = 9999
+                                        df_noisy.loc[pattern_indices, col] = 9999  # 数値を挿入
                                     elif pattern.startswith("custom:"): # カスタム文字列を挿入する場合
-                                        custom_value = pattern.split(":", 1)[1]
+                                        custom_value = pattern.split(":", 1)[1]  # カスタム文字列を取得
                                         df_noisy.loc[pattern_indices, col] = custom_value  # カスタム文字列を挿入
                                     
+                                    # 日付型の異常値
+                                    elif pattern == "invalid_date":  # 不正な日付形式を挿入する場合
+                                        df_noisy.loc[pattern_indices, col] = "INVALID_DATE"  # 不正な日付形式を挿入
+                                    elif pattern == "future_date":  # 未来の日付を挿入する場合
+                                        df_noisy.loc[pattern_indices, col] = "2100-01-01"  # 未来の日付を挿入
+                                    elif pattern == "past_date":  # 過去すぎる日付を挿入する場合
+                                        df_noisy.loc[pattern_indices, col] = "1900-01-01"  # 過去すぎる日付を挿入
 
 
             # プレビュー表示
